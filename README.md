@@ -106,21 +106,19 @@ Anchor your patterns with `^`. Without it, `re.search` matches anywhere in the n
 
 ### Sample output
 
-Messages are in French and use ASCII only:
-
 ```
-== Snapshots orphelins - SIMULATION (rien n'est supprime) ==
-3 candidats sur 1284 snapshots examines. 'used' = espace propre a chaque snapshot ; l'espace reellement libere peut etre superieur (blocs partages).
-Orphelins ignores : 412 sur dataset en lecture seule, 1 proteges par hold/clone.
-  storage/old-share: 3 snapshots, ~1.2 Gio
-    storage/old-share@auto-2026-02-28_00-00  (244 j, 512.0 Mio)
-    storage/old-share@auto-2026-03-07_00-00  (237 j, 400.0 Mio)
-    storage/old-share@auto-2026-03-14_00-00  (230 j, 317.0 Mio)
+== Orphaned snapshots - DRY RUN (nothing is destroyed) ==
+3 candidates out of 1284 snapshots checked. 'used' is the space unique to each snapshot; the space actually freed can be larger (shared blocks).
+Orphans skipped: 412 on a read-only dataset, 1 protected by a hold/clone.
+  storage/old-share: 3 snapshots, ~1.2 GiB
+    storage/old-share@auto-2026-02-28_00-00  (244 d, 512.0 MiB)
+    storage/old-share@auto-2026-03-07_00-00  (237 d, 400.0 MiB)
+    storage/old-share@auto-2026-03-14_00-00  (230 d, 317.0 MiB)
 
-Relancer avec --destroy pour supprimer apres verification.
+Run again with --destroy to destroy them once reviewed.
 ```
 
-The `Orphelins ignores` line counts orphans that were spared, and why. Those
+The `Orphans skipped` line counts orphans that were spared, and why. Those
 snapshots are not listed.
 
 Per-dataset totals add up each snapshot's `used` property, which counts only the

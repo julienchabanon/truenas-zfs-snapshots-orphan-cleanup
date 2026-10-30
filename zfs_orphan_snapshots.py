@@ -57,7 +57,7 @@ STRFTIME = {
 def run(cmd):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        raise RuntimeError(f"{' '.join(cmd)} a echoue : {r.stderr.strip()}")
+        raise RuntimeError(f"{' '.join(cmd)} failed: {r.stderr.strip()}")
     return r.stdout
 
 
@@ -146,9 +146,9 @@ def list_snapshots(root):
 
 
 def human(n):
-    for unit in ("o", "Kio", "Mio", "Gio", "Tio"):
-        if n < 1024 or unit == "Tio":
-            return f"{n:.1f} {unit}" if unit != "o" else f"{n} o"
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if n < 1024 or unit == "TiB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
         n /= 1024
 
 
@@ -184,16 +184,16 @@ def main():
             repls = midclt("replication.query")
         except RuntimeError as e:
             # Without replication info we cannot guarantee safety, so stop here.
-            raise RuntimeError(f"lecture des taches de replication impossible ({e})")
+            raise RuntimeError(f"cannot read replication tasks ({e})")
         owners = Owners(tasks, repls)
         datasets = list_datasets()
         # A typo in --exclude would silently leave the dataset unprotected.
         unknown = [e for e in excluded if e not in datasets]
         if unknown:
-            raise RuntimeError(f"--exclude : dataset inexistant : {', '.join(unknown)}")
+            raise RuntimeError(f"--exclude: no such dataset: {', '.join(unknown)}")
         snaps = list(list_snapshots(args.root))
     except Exception as e:
-        print(f"ERREUR : {e}", file=sys.stderr)
+        print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
     now = time.time()
@@ -207,22 +207,22 @@ def main():
         if now - s["created"] < min_age:
             continue
         if any(under(s["ds"], ex, True) for ex in excluded):
-            skipped["exclus par --exclude"] += 1
+            skipped["excluded by --exclude"] += 1
         # Unknown dataset (renamed meanwhile?) is treated as read-only.
         elif datasets.get(s["ds"], True) and not args.include_readonly:
-            skipped["sur dataset en lecture seule"] += 1
+            skipped["on a read-only dataset"] += 1
         elif s["removal_scheduled"]:
-            skipped["deja planifies pour suppression par TrueNAS"] += 1
+            skipped["already scheduled for removal by TrueNAS"] += 1
         elif s["held"] or s["has_clones"]:
-            skipped["proteges par hold/clone"] += 1
+            skipped["protected by a hold/clone"] += 1
         else:
             candidates.append(s)
-    skipped_txt = ", ".join(f"{n} {why}" for why, n in skipped.items()) or "aucun"
+    skipped_txt = ", ".join(f"{n} {why}" for why, n in skipped.items()) or "none"
 
     if not candidates:
         if args.verbose:
-            print(f"Aucun snapshot orphelin ({len(snaps)} snapshots examines, "
-                  f"orphelins ignores : {skipped_txt}).")
+            print(f"No orphaned snapshots ({len(snaps)} snapshots checked, "
+                  f"orphans skipped: {skipped_txt}).")
         return 0
 
     # Aggregate per dataset: [count, total unique space]
@@ -232,40 +232,40 @@ def main():
         d[0] += 1
         d[1] += s["used"]
 
-    mode = "SUPPRESSION" if args.destroy else "SIMULATION (rien n'est supprime)"
-    print(f"== Snapshots orphelins - {mode} ==")
-    print(f"{len(candidates)} candidats sur {len(snaps)} snapshots examines. "
-          f"'used' = espace propre a chaque snapshot ; l'espace reellement "
-          f"libere peut etre superieur (blocs partages).")
-    print(f"Orphelins ignores : {skipped_txt}.")
+    mode = "DESTROY" if args.destroy else "DRY RUN (nothing is destroyed)"
+    print(f"== Orphaned snapshots - {mode} ==")
+    print(f"{len(candidates)} candidates out of {len(snaps)} snapshots checked. "
+          f"'used' is the space unique to each snapshot; the space actually "
+          f"freed can be larger (shared blocks).")
+    print(f"Orphans skipped: {skipped_txt}.")
     for ds, (n, used) in sorted(by_ds.items(), key=lambda kv: -kv[1][1]):
         print(f"  {ds}: {n} snapshots, ~{human(used)}")
     for s in sorted(candidates, key=lambda x: x["created"]):
         age = int((now - s["created"]) / 86400)
-        print(f"    {s['full']}  ({age} j, {human(s['used'])})")
+        print(f"    {s['full']}  ({age} d, {human(s['used'])})")
 
     too_many = len(candidates) > args.max_destroy
     if not args.destroy:
         if too_many:
-            print(f"\nATTENTION : {len(candidates)} candidats > --max-destroy "
-                  f"({args.max_destroy}) : --destroy refuserait de supprimer.")
-        print("\nRelancer avec --destroy pour supprimer apres verification.")
+            print(f"\nWARNING: {len(candidates)} candidates > --max-destroy "
+                  f"({args.max_destroy}): --destroy would refuse to destroy anything.")
+        print("\nRun again with --destroy to destroy them once reviewed.")
         return 0
 
     if too_many:
-        print(f"\nREFUS : {len(candidates)} candidats > --max-destroy "
-              f"({args.max_destroy}). Verifier la config des taches puis relancer "
-              f"avec un seuil plus eleve si c'est normal.", file=sys.stderr)
+        print(f"\nREFUSED: {len(candidates)} candidates > --max-destroy "
+              f"({args.max_destroy}). Check the task configuration, then run again "
+              f"with a higher limit if this is expected.", file=sys.stderr)
         return 2
 
     failures = 0
     for s in candidates:
         try:
             run(["zfs", "destroy", "--", s["full"]])
-            print(f"supprime : {s['full']}")
+            print(f"destroyed: {s['full']}")
         except RuntimeError as e:
             failures += 1
-            print(f"echec : {e}", file=sys.stderr)
+            print(f"failed: {e}", file=sys.stderr)
     return 1 if failures else 0
 
 
